@@ -54,6 +54,16 @@ func next_id() -> int:
 	_next_villager_id += 1
 	return i
 
+func find(id: int):
+	for v in villagers:
+		if v.vid == id:
+			return v
+	return null
+
+func name_of(id: int) -> String:
+	var v = find(id)
+	return ("%s %s" % [v.family_name, v.vname]) if v else "누군가"
+
 # ── 인구 ────────────────────────────────────────────────
 func population() -> int:
 	return villagers.size()

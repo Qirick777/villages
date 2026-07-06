@@ -59,7 +59,7 @@ const JOB_TARGET_RATIO: Dictionary = {
 # ─────────────────────────────────────────────────────────────
 const ADULT_FU_PER_DAY: float = 3.0
 const CHILD_FU_PER_DAY: float = 1.5
-const START_FOOD_FU: float = 30.0
+const START_FOOD_FU: float = 40.0
 const STORE_DAYS: int = 5                   # 비축 상한 = 인구×3×5
 const SPOILAGE_RATE: float = 0.10           # 자정 초과분 부패
 
@@ -139,9 +139,9 @@ const SPRITE_SCALE: Dictionary = {
 }
 
 # 번식 (§8.1)
-const COUPLE_GAUGE_PER_DAY: float = 25.0
+const COUPLE_GAUGE_PER_DAY: float = 34.0
 const PREGNANCY_DAYS: int = 2
-const REPRODUCE_COOLDOWN_DAYS: int = 6
+const REPRODUCE_COOLDOWN_DAYS: int = 5
 
 # 맨손 효율 (§0 원칙1)
 const BAREHAND_EFF: float = 0.25

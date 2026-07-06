@@ -40,20 +40,32 @@ var produced_today: float = 0.0
 # ── 이동 ──
 var cell: Vector2i = Vector2i.ZERO
 var _target_world: Vector2 = Vector2.ZERO
-var _move_speed: float = 80.0
+var _move_speed: float = 46.0
 var _work_cell: Vector2i = Vector2i.ZERO
 var _farm_requested: bool = false
+var _anchor_cell: Vector2i = Vector2i.ZERO   # 배회 기준점(회관/집/작업지)
+var _jitter: Vector2 = Vector2.ZERO          # 겹침 방지 개인 오프셋
+var _wander_t: float = 0.0
+var _anim_t: float = 0.0
+var _walking: bool = false
+var _action: StringName = &""                # 현재 행동(아이콘 표시)
+# 연출용 RNG — 렌더 틱에서 랜덤을 뽑아도 시뮬 결정론(RNGService)을 오염시키지 않음
+var _fx := RandomNumberGenerator.new()
 
 # ── 시각 ──
 var _body: Polygon2D
 var _shadow: Polygon2D
 var _bubble: Label
+var _status: Label
 
 const WORK_MINUTES := 570.0
 
 func _ready() -> void:
+	_fx.seed = vid * 2654435761
+	_jitter = Vector2(_fx.randf_range(-13, 13), _fx.randf_range(-7, 7))
+	_anchor_cell = cell
 	_build_visual()
-	position = Iso.cell_to_world(cell)
+	position = Iso.cell_to_world(cell) + _jitter
 	_target_world = position
 	GameClock.tick.connect(_on_tick)
 	GameClock.phase_changed.connect(_on_phase)
@@ -99,47 +111,78 @@ func change_job(j: StringName) -> void:
 func fu_need() -> float:
 	return Defs.fu_consumption(int(age_days))
 
-# ── 틱 (이동 + 작업) ──
+# ── 틱: 작업 생산만 (이동은 _process에서 프레임 보간) ──
 func _on_tick(_day: int, _minute: int) -> void:
-	_update_move()
 	var phase := GameClock.phase
 	if phase == &"WORK_AM" or phase == &"WORK_PM":
 		if is_worker():
 			_work_tick()
 
-func _update_move() -> void:
-	var to := _target_world - position
-	var d := to.length()
-	if d > 1.0:
-		var step: float = _move_speed * Defs.TICK_SECONDS
-		if step >= d:
-			position = _target_world
+# ── 프레임 보간 이동 + 배회 + 걷기 애니메이션 ──
+func _process(delta: float) -> void:
+	var mult := GameClock.speed_mult()
+	if mult <= 0.0:
+		return
+	_anim_t += delta
+	# 사교 시간(집회/휴식)엔 기준점 주변을 서성이며 무리 형성
+	if _is_social_phase():
+		_wander_t -= delta * mult
+		if _wander_t <= 0.0:
+			_wander_t = _fx.randf_range(0.9, 2.4)
+			var r := _fx.randf_range(6.0, 30.0)
+			var a := _fx.randf_range(0.0, TAU)
+			_target_world = Iso.cell_to_world(_anchor_cell) + Vector2(cos(a) * r, sin(a) * r * 0.55)
+			_set_action(&"🗣")
+
+	var mv := _move_speed * delta * clampf(mult, 1.0, 4.0)
+	var dist := position.distance_to(_target_world)
+	_walking = dist > 2.0
+	if _walking:
+		position = position.move_toward(_target_world, mv)
+		cell = Iso.world_to_cell(position)
+
+	# 걷기 상하 흔들림(살아있는 느낌) + 정지 시 미세 호흡
+	if _body:
+		if _walking:
+			_body.position.y = -abs(sin(_anim_t * 12.0)) * 2.2
 		else:
-			position += to / d * step
-		# Y-sort 갱신
-		var c := Iso.world_to_cell(position)
-		if c != cell:
-			cell = c
-	if _bubble and _bubble.visible:
-		_bubble.position = Vector2(-12, -46)
+			_body.position.y = sin(_anim_t * 2.0) * 0.6
 
 func _move_to(target_cell: Vector2i) -> void:
 	_work_cell = target_cell
-	_target_world = Iso.cell_to_world(target_cell)
+	_target_world = Iso.cell_to_world(target_cell) + _jitter
+
+func _is_social_phase() -> bool:
+	var p := GameClock.phase
+	return p == &"MEETING_AM" or p == &"MEETING_NOON" or p == &"REST"
 
 # ── 페이즈 전이 ──
 func _on_phase(phase: StringName) -> void:
 	match phase:
 		&"WAKE", &"MEETING_AM", &"MEETING_NOON":
+			_anchor_cell = Village.hall_cell
 			_move_to(Village.hall_cell)
 			if phase == &"MEETING_AM" or phase == &"MEETING_NOON":
+				_set_action(&"🍽")
 				_attend_meeting()
+			else:
+				_set_action(&"🚶")
 		&"WORK_AM", &"WORK_PM":
 			if is_worker():
 				_pick_work_site()
-		&"REST", &"SLEEP":
+			else:
+				# 아동·청소년은 회관 주변 배회
+				_anchor_cell = Village.hall_cell
+				_set_action(_stage_icon())
+		&"REST":
+			if home:
+				_anchor_cell = home.center()
+				_move_to(home.center())
+			_set_action(&"🗣")
+		&"SLEEP":
 			if home:
 				_move_to(home.center())
+			_set_action(&"💤")
 
 # ── 집회: 식량 납품 + 요청 수령 ──
 func _attend_meeting() -> void:
@@ -157,26 +200,33 @@ func _attend_meeting() -> void:
 
 # ── 작업지 선택 ──
 func _pick_work_site() -> void:
+	_set_action(_job_icon())
 	match job:
 		Defs.JOB_CARPENTER:
 			var t := MapGen.nearest_resource(cell, MapGen.Res.TREE)
-			_move_to(t if t.x >= 0 else Village.hall_cell)
+			_goto_work(t if t.x >= 0 else Village.hall_cell)
 		Defs.JOB_MINER:
-			var rtype := MapGen.Res.STONE
-			var m := MapGen.nearest_resource(cell, rtype)
-			_move_to(m if m.x >= 0 else Village.hall_cell)
+			var m := MapGen.nearest_resource(cell, MapGen.Res.STONE)
+			_goto_work(m if m.x >= 0 else Village.hall_cell)
 		Defs.JOB_HUNTER:
 			var a := MapGen.nearest_resource(cell, MapGen.Res.ANIMAL)
-			_move_to(a if a.x >= 0 else Village.hall_cell)
+			_goto_work(a if a.x >= 0 else Village.hall_cell)
 		Defs.JOB_FARMER:
 			var farm = Village.farm_for(vid)
 			if farm:
-				_move_to(farm.center())
+				_goto_work(farm.center())
 			else:
 				_ensure_farm_request()
-				_move_to(Village.hall_cell)
+				_goto_work(Village.hall_cell)
+		Defs.JOB_BUILDER:
+			var site = _find_build_site()
+			_goto_work(site.center() if site else Village.hall_cell)
 		_:
-			_move_to(Village.hall_cell)
+			_goto_work(Village.hall_cell)
+
+func _goto_work(target_cell: Vector2i) -> void:
+	_anchor_cell = target_cell
+	_move_to(target_cell)
 
 # ── 작업 틱: 직업별 생산 ──
 func _work_tick() -> void:
@@ -234,6 +284,7 @@ func _ensure_tool_request(broken: bool) -> void:
 	var chain_req = RequestBroker.post(tool, 1, vid, Defs.JOB_ARTISAN, pri)
 	# 재료 조달 체인 파생
 	RequestBroker.request_tool_materials(tool, vid, chain_req.chain_id)
+	_show_bubble(tool)
 	if not broken:
 		_preventive_posted = true
 
@@ -359,6 +410,7 @@ func _ensure_farm_request() -> void:
 		return
 	RequestBroker.post(&"밭건설", 1, vid, Defs.JOB_BUILDER, Defs.BONUS_FARMER_NOFIELD,
 		0, {"kind": "FARM"})
+	_show_bubble(&"밭 필요")
 	_farm_requested = true
 
 # ── 일일 갱신 (자정) — 코디네이터가 호출 ──
@@ -407,12 +459,21 @@ func _build_visual() -> void:
 	head.color = Color("#e8c9a0")
 	add_child(head)
 
+	# 상시 상태 아이콘 (머리 위) — "뭘 하는지" 표시
+	_status = Label.new()
+	_status.add_theme_font_size_override("font_size", 13)
+	_status.position = Vector2(-8, -46)
+	add_child(_status)
+
+	# 요청/대사 말풍선 (임시)
 	_bubble = Label.new()
-	_bubble.add_theme_font_size_override("font_size", 10)
-	_bubble.position = Vector2(-12, -46)
+	_bubble.add_theme_font_size_override("font_size", 11)
+	_bubble.add_theme_color_override("font_color", Color("#fff2c0"))
+	_bubble.position = Vector2(-10, -62)
 	_bubble.visible = false
 	add_child(_bubble)
 	_apply_scale()
+	_set_action(_stage_icon())
 
 func _apply_scale() -> void:
 	var s: float = Defs.SPRITE_SCALE.get(life_stage(), 1.0)
@@ -430,10 +491,32 @@ func _show_bubble(item: StringName) -> void:
 		return
 	_bubble.text = "💬%s" % item
 	_bubble.visible = true
-	get_tree().create_timer(1.2).timeout.connect(func():
+	get_tree().create_timer(1.6).timeout.connect(func():
 		if is_instance_valid(_bubble):
 			_bubble.visible = false)
 
-func _process(_delta: float) -> void:
-	# Y-sort: z 기반 정렬은 부모 y_sort_enabled로 처리, 여기선 스케일만 주기 갱신
-	pass
+func _set_action(icon: StringName) -> void:
+	_action = icon
+	if _status:
+		_status.text = icon
+
+## 직업별 작업 아이콘
+func _job_icon() -> StringName:
+	match job:
+		Defs.JOB_FARMER: return &"🌾"
+		Defs.JOB_HUNTER: return &"🏹"
+		Defs.JOB_CARPENTER: return &"🪓"
+		Defs.JOB_MINER: return &"⛏"
+		Defs.JOB_ARTISAN: return &"🛠"
+		Defs.JOB_BUILDER: return &"🔨"
+		Defs.JOB_MANAGER: return &"📦"
+		Defs.JOB_GUARD: return &"🛡"
+		_: return &"🚶"
+
+## 생애 단계 아이콘 (비노동 연령)
+func _stage_icon() -> StringName:
+	match life_stage():
+		&"infant": return &"👶"
+		&"child": return &"🧒"
+		&"teen": return &"🧑"
+		_: return &"🙂"

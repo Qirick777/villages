@@ -96,6 +96,34 @@ func refresh() -> void:
 		var roof := Polygon2D.new()
 		roof.polygon = PackedVector2Array([
 			Vector2(-footprint*0.5,-h), Vector2(0,footprint*0.25-h),
-			Vector2(footprint*0.5,-h), Vector2(0,-h-14)])
-		roof.color = col.lightened(0.2)
+			Vector2(footprint*0.5,-h), Vector2(0,-h-18)])
+		roof.color = col.lightened(0.25)
 		add_child(roof)
+		# 문 (정면)
+		var door := Polygon2D.new()
+		door.polygon = PackedVector2Array([
+			Vector2(-4, 0), Vector2(4, 2), Vector2(4, -12), Vector2(-4, -14)])
+		door.color = Color("#3a2a1a")
+		add_child(door)
+
+	# 이름표
+	var label := Label.new()
+	label.text = _building_name(b)
+	label.add_theme_font_size_override("font_size", 12)
+	label.add_theme_color_override("font_color", Color.WHITE)
+	label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
+	label.add_theme_constant_override("outline_size", 4)
+	label.position = Vector2(-footprint * 0.4, -h - 34)
+	add_child(label)
+
+func _building_name(b) -> String:
+	if kind == Kind.HALL:
+		return "🏛 회관"
+	if kind == Kind.FARM:
+		var crop := "🌾 밭"
+		if not b.built:
+			crop = "🚧 밭 %d%%" % int(b.progress() * 100)
+		return crop
+	if not b.built:
+		return "🚧 집 %d%%" % int(b.progress() * 100)
+	return "🏠 집"

@@ -21,8 +21,20 @@ var _recent_farm: Array = []
 var _house_shortage_posted := false
 
 func _ready() -> void:
+	_setup_font()
 	_build_scene_nodes()
 	start_game(RNGService.seed_value)
+
+## 한글·이모지 렌더링 보장: OS 시스템 폰트를 엔진 전역 폴백으로 지정.
+## (Godot 기본 내장 폰트는 라틴 전용이라 한글이 □로 깨진다)
+func _setup_font() -> void:
+	var f := SystemFont.new()
+	f.font_names = PackedStringArray([
+		"Malgun Gothic", "Apple SD Gothic Neo", "Noto Sans CJK KR",
+		"Noto Sans KR", "NanumGothic", "Segoe UI", "sans-serif"])
+	f.allow_system_fallback = true
+	ThemeDB.fallback_font = f
+	ThemeDB.fallback_font_size = 14
 	GameClock.phase_changed.connect(_on_phase)
 	GameClock.hour_changed.connect(_on_hour)
 	GameClock.day_changed.connect(_on_day_end)
@@ -70,6 +82,7 @@ func start_game(s: int) -> void:
 	_spawn_initial_villagers()
 
 	_cam.position = Iso.cell_to_world(Village.hall_cell)
+	_cam.zoom = Vector2(1.6, 1.6)
 	GameClock.day = 1
 	GameClock.minute = Defs.T_WAKE
 	GameClock.set_speed(GameClock.Speed.X1)
@@ -108,6 +121,15 @@ func _place_initial_settlement() -> void:
 		_add_building(b)
 		_mark_occupied(b)
 
+	# 초기 밭 2구획 (농부 2명 담당) — 없으면 식량 적자로 마을 붕괴 (§10)
+	var farm_offsets := [Vector2i(8, -2), Vector2i(-9, -1)]
+	for off in farm_offsets:
+		var fp := Prefabs.farms()[0]
+		var fb := Building.from_prefab(fp, hc + off)
+		fb.built = true
+		_add_building(fb)
+		_mark_occupied(fb)
+
 # ── 초기 주민 7인 (§10) ──
 func _spawn_initial_villagers() -> void:
 	var roster := [
@@ -125,6 +147,11 @@ func _spawn_initial_villagers() -> void:
 		if tool != &"":
 			v.tool_item = tool
 			v.tool_dur = Defs.TOOLS[tool]["durability"]
+		# 농부는 초기 밭 배정 (식량 흑자 확보)
+		if roster[i] == Defs.JOB_FARMER:
+			var farm = Village.unassigned_farm()
+			if farm:
+				farm.assigned_to = v.vid
 		# 주택 배정
 		var home = houses[i % houses.size()]
 		v.home = home
@@ -203,20 +230,21 @@ func _on_hour(_day: int, _hour: int) -> void:
 
 func _update_daynight() -> void:
 	var f := GameClock.day_fraction()
-	# 06→새벽, 12→낮, 18→노을, 22→밤
+	# 06→새벽, 12→낮, 18→노을, 22→밤 (밤도 가시성 위해 너무 어둡지 않게)
+	var night := Color("#6b76a0")
 	var col: Color
 	if f < 0.25:
-		col = Color("#2a3555")
+		col = night
 	elif f < 0.30:
-		col = Color("#2a3555").lerp(Color("#9fb8d8"), (f - 0.25) / 0.05)
+		col = night.lerp(Color("#b8cbe4"), (f - 0.25) / 0.05)
 	elif f < 0.5:
-		col = Color("#9fb8d8").lerp(Color("#ffffff"), (f - 0.30) / 0.20)
+		col = Color("#b8cbe4").lerp(Color("#ffffff"), (f - 0.30) / 0.20)
 	elif f < 0.75:
-		col = Color("#ffffff").lerp(Color("#ffb27a"), (f - 0.5) / 0.25)
+		col = Color("#ffffff").lerp(Color("#ffc79a"), (f - 0.5) / 0.25)
 	elif f < 0.92:
-		col = Color("#ffb27a").lerp(Color("#2a3555"), (f - 0.75) / 0.17)
+		col = Color("#ffc79a").lerp(night, (f - 0.75) / 0.17)
 	else:
-		col = Color("#2a3555")
+		col = night
 	_modulate.color = col
 
 func _haul_materials() -> void:

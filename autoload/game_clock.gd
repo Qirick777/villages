@@ -86,6 +86,9 @@ func _update_phase() -> void:
 func set_speed(s: int) -> void:
 	speed = clampi(s, 0, Speed.X8)
 
+func speed_mult() -> float:
+	return SPEED_MULT[speed]
+
 func time_string() -> String:
 	return "Day %d  %02d:%02d" % [day, minute / 60, minute % 60]
 
