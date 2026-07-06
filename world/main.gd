@@ -469,7 +469,7 @@ func _build_progress_step() -> void:
 
 func _connect_road(b) -> void:
 	var hc := Village.hall_cell
-	var c := b.cell
+	var c: Vector2i = b.cell
 	# L자 경로
 	var x := hc.x
 	while x != c.x:

@@ -64,7 +64,7 @@ func refresh() -> void:
 	if building == null:
 		return
 	var b = building
-	var footprint := (b.size.x + b.size.y) * (Iso.TILE_W / 4.0)
+	var footprint: float = (b.size.x + b.size.y) * (Iso.TILE_W / 4.0)
 	# 그림자
 	var shadow := Polygon2D.new()
 	shadow.polygon = PackedVector2Array([
