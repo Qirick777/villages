@@ -1,0 +1,15 @@
+# Godot 4 import/cache
+.godot/
+.import/
+export.cfg
+export_presets.cfg
+
+# Godot mono
+.mono/
+data_*/
+mono_crash.*.json
+
+# System
+*.tmp
+*.swp
+.DS_Store
