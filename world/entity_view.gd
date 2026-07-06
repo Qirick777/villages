@@ -8,15 +8,15 @@ var building = null           # Building (HALL/HOUSE/FARM일 때)
 
 func setup_resource(res_type: int, cell: Vector2i) -> void:
 	position = Iso.cell_to_world(cell)
-	match res_type:
-		MapGen.Res.TREE:
-			kind = Kind.TREE
-			_make_tree()
-		MapGen.Res.STONE, MapGen.Res.IRON, MapGen.Res.COAL:
-			kind = Kind.ORE
-			_make_ore(res_type)
-		MapGen.Res.ANIMAL:
-			_make_animal()
+	# 오토로드 enum(MapGen.Res.*)은 match 상수 패턴으로 못 쓰므로 if/elif로 분기.
+	if res_type == MapGen.Res.TREE:
+		kind = Kind.TREE
+		_make_tree()
+	elif res_type == MapGen.Res.ANIMAL:
+		_make_animal()
+	else:
+		kind = Kind.ORE
+		_make_ore(res_type)
 
 func setup_building(b) -> void:
 	building = b
@@ -44,10 +44,12 @@ func _make_tree() -> void:
 func _make_ore(res_type: int) -> void:
 	var rock := Polygon2D.new()
 	rock.polygon = PackedVector2Array([Vector2(-11,0), Vector2(0,6), Vector2(11,0), Vector2(6,-12), Vector2(-6,-12)])
-	match res_type:
-		MapGen.Res.IRON: rock.color = Color("#a6785a")
-		MapGen.Res.COAL: rock.color = Color("#3a3a40")
-		_: rock.color = Color("#9a9ea6")
+	if res_type == MapGen.Res.IRON:
+		rock.color = Color("#a6785a")
+	elif res_type == MapGen.Res.COAL:
+		rock.color = Color("#3a3a40")
+	else:
+		rock.color = Color("#9a9ea6")
 	add_child(rock)
 
 func _make_animal() -> void:
