@@ -24,6 +24,12 @@ func _ready() -> void:
 	_setup_font()
 	_build_scene_nodes()
 	start_game(RNGService.seed_value)
+	# 시그널 연결은 노드 생성(_build_scene_nodes) 이후에 해야 _hud 등이 유효하다.
+	GameClock.phase_changed.connect(_on_phase)
+	GameClock.hour_changed.connect(_on_hour)
+	GameClock.day_changed.connect(_on_day_end)
+	RequestBroker.request_posted.connect(_on_request_posted)
+	_hud.regenerate_requested.connect(func(s): start_game(s))
 
 ## 한글·이모지 렌더링 보장: OS 시스템 폰트를 엔진 전역 폴백으로 지정.
 ## (Godot 기본 내장 폰트는 라틴 전용이라 한글이 □로 깨진다)
@@ -35,11 +41,6 @@ func _setup_font() -> void:
 	f.allow_system_fallback = true
 	ThemeDB.fallback_font = f
 	ThemeDB.fallback_font_size = 14
-	GameClock.phase_changed.connect(_on_phase)
-	GameClock.hour_changed.connect(_on_hour)
-	GameClock.day_changed.connect(_on_day_end)
-	RequestBroker.request_posted.connect(_on_request_posted)
-	_hud.regenerate_requested.connect(func(s): start_game(s))
 
 func _build_scene_nodes() -> void:
 	_modulate = CanvasModulate.new()
